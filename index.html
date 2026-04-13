@@ -54,7 +54,9 @@
             Trophy: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>,
             ShoppingBag: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>,
             History: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>,
-            User: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            User: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>,
+            Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
         };
 
         const App = () => {
@@ -67,6 +69,11 @@
             const [missions, setMissions] = useState([]);
             const [rewards, setRewards] = useState([]);
             const [logs, setLogs] = useState([]);
+
+            // 新增功能狀態
+            const [showAddModal, setShowAddModal] = useState(false);
+            const [newItemTitle, setNewItemTitle] = useState('');
+            const [newItemValue, setNewItemValue] = useState('');
 
             const [showPasswordModal, setShowPasswordModal] = useState(false);
             const [passwordInput, setPasswordInput] = useState('');
@@ -88,7 +95,6 @@
 
                         onAuthStateChanged(auth, (user) => {
                             if (user) {
-                                // 重要：使用固定的路徑結構以便與規則匹配
                                 const path = doc(db, 'artifacts', appId, 'public', 'data', 'state', 'main');
                                 dbRef.current = path;
 
@@ -143,7 +149,39 @@
                 }
             };
 
+            const addNewItem = async () => {
+                if (!newItemTitle || !newItemValue) return;
+                const newItem = {
+                    id: Date.now(),
+                    title: newItemTitle,
+                    value: parseInt(newItemValue),
+                    type: activeTab === 'tasks' ? 'earn' : 'spend'
+                };
+
+                if (activeTab === 'tasks') {
+                    await updateCloud({ missions: [newItem, ...missions] });
+                } else {
+                    await updateCloud({ rewards: [newItem, ...rewards] });
+                }
+
+                setNewItemTitle('');
+                setNewItemValue('');
+                setShowAddModal(false);
+            };
+
+            const deleteItem = async (id, type) => {
+                if (type === 'earn') {
+                    await updateCloud({ missions: missions.filter(m => m.id !== id) });
+                } else {
+                    await updateCloud({ rewards: rewards.filter(r => r.id !== id) });
+                }
+            };
+
             const submitRequest = async (item) => {
+                if (item.type === 'spend' && coins < item.value) {
+                    alert('點數不足！');
+                    return;
+                }
                 const newLog = { ...item, logId: Date.now(), status: 'pending', timestamp: new Date().toLocaleString() };
                 const newMissions = item.type === 'earn' ? missions.filter(m => m.id !== item.id) : missions;
                 await updateCloud({ logs: [newLog, ...logs], missions: newMissions });
@@ -177,37 +215,78 @@
                     </header>
 
                     <main className="max-w-md mx-auto p-4 space-y-4">
-                        {syncStatus === 'Permission Denied' && (
-                            <div className="bg-red-50 border border-red-200 p-4 rounded-2xl text-red-600 text-sm">
-                                <p className="font-bold mb-1">❌ 權限設定不全</p>
-                                <p className="mb-2 text-xs">請到 Firebase Console 的 Rules 中，將 Rules 改為：</p>
-                                <pre className="bg-white/50 p-2 rounded text-[10px] overflow-x-auto font-mono">
-{`service cloud.firestore {
-  match /databases/{database}/documents {
-    match /artifacts/{appId}/public/data/{document=**} {
-      allow read, write: if true;
-    }
-  }
-}`}
-                                </pre>
-                            </div>
-                        )}
-
                         <div className="flex bg-slate-200 p-1 rounded-2xl">
                             <button onClick={()=>setActiveTab('tasks')} className={`flex-1 py-2 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${activeTab==='tasks'?'bg-white shadow-sm':'text-slate-500'}`}><Icons.Trophy /> 任務</button>
                             <button onClick={()=>setActiveTab('shop')} className={`flex-1 py-2 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${activeTab==='shop'?'bg-white shadow-sm':'text-slate-500'}`}><Icons.ShoppingBag /> 商店</button>
                             <button onClick={()=>setActiveTab('logs')} className={`flex-1 py-2 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${activeTab==='logs'?'bg-white shadow-sm':'text-slate-500'}`}><Icons.History /> 紀錄</button>
                         </div>
 
+                        {/* 新增按鈕 */}
+                        {role === 'user' && (activeTab === 'tasks' || activeTab === 'shop') && (
+                            <button 
+                                onClick={() => setShowAddModal(true)}
+                                className="w-full py-3 border-2 border-dashed border-slate-300 rounded-2xl text-slate-400 flex items-center justify-center gap-2 hover:bg-slate-100 transition-colors font-medium text-sm"
+                            >
+                                <Icons.Plus /> 新增自定義{activeTab === 'tasks' ? '任務' : '商品'}
+                            </button>
+                        )}
+
                         {role === 'user' && activeTab === 'tasks' && (
                             <div className="space-y-3">
                                 {missions.map(m => (
-                                    <div key={m.id} className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm">
-                                        <div><p className="font-bold">{m.title}</p><p className="text-blue-500 text-xs font-black">+{m.value} pt</p></div>
+                                    <div key={m.id} className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm group">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-bold">{m.title}</p>
+                                                <button onClick={() => deleteItem(m.id, 'earn')} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 p-1"><Icons.Trash /></button>
+                                            </div>
+                                            <p className="text-blue-500 text-xs font-black">+{m.value} pt</p>
+                                        </div>
                                         <button onClick={()=>submitRequest(m)} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold active:scale-95 transition-transform">回報完成</button>
                                     </div>
                                 ))}
-                                {missions.length === 0 && isCloudSynced && <p className="text-center py-10 text-slate-400 text-sm italic">目前暫無任務項目</p>}
+                            </div>
+                        )}
+
+                        {role === 'user' && activeTab === 'shop' && (
+                            <div className="space-y-3">
+                                {rewards.map(r => (
+                                    <div key={r.id} className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm group">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-bold">{r.title}</p>
+                                                <button onClick={() => deleteItem(r.id, 'spend')} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 p-1"><Icons.Trash /></button>
+                                            </div>
+                                            <p className="text-purple-500 text-xs font-black">-{r.value} pt</p>
+                                        </div>
+                                        <button 
+                                            onClick={()=>submitRequest(r)} 
+                                            disabled={coins < r.value}
+                                            className={`px-4 py-2 rounded-xl text-xs font-bold active:scale-95 transition-transform ${coins >= r.value ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-400'}`}
+                                        >
+                                            申請兌換
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {role === 'user' && activeTab === 'logs' && (
+                            <div className="space-y-2">
+                                {logs.map(log => (
+                                    <div key={log.logId} className="bg-white/50 p-3 rounded-xl border border-slate-100 flex justify-between items-center text-sm">
+                                        <div>
+                                            <p className="font-medium text-slate-700">{log.title}</p>
+                                            <p className="text-[10px] text-slate-400">{log.timestamp}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className={`font-bold ${log.status === 'approved' ? 'text-green-500' : log.status === 'rejected' ? 'text-red-400' : 'text-amber-500 animate-pulse'}`}>
+                                                {log.status === 'approved' ? '已核准' : log.status === 'rejected' ? '被駁回' : '審核中'}
+                                            </p>
+                                            <p className="text-[10px] font-mono font-bold text-slate-400">{log.type === 'earn' ? '+' : '-'}{log.value}</p>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         )}
 
@@ -234,6 +313,34 @@
                         )}
                     </main>
 
+                    {/* 新增選項 Modal */}
+                    {showAddModal && (
+                        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-6 backdrop-blur-sm">
+                            <div className="bg-white rounded-[2rem] p-8 w-full max-w-xs shadow-2xl">
+                                <h2 className="text-center font-bold mb-4 text-slate-800">新增{activeTab === 'tasks' ? '任務' : '商品'}</h2>
+                                <div className="space-y-4">
+                                    <input 
+                                        type="text" 
+                                        placeholder="輸入名稱 (如: 運動)" 
+                                        className="w-full bg-slate-100 p-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-medium" 
+                                        value={newItemTitle} 
+                                        onChange={(e)=>setNewItemTitle(e.target.value)}
+                                    />
+                                    <input 
+                                        type="number" 
+                                        placeholder="點數點數 (如: 50)" 
+                                        className="w-full bg-slate-100 p-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold" 
+                                        value={newItemValue} 
+                                        onChange={(e)=>setNewItemValue(e.target.value)}
+                                    />
+                                    <button onClick={addNewItem} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold shadow-lg shadow-slate-200">建立項目</button>
+                                    <button onClick={()=>setShowAddModal(false)} className="w-full text-slate-400 py-2 text-sm">取消</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 底部角色切換列 */}
                     <div className="fixed bottom-6 left-4 right-4 max-w-md mx-auto">
                         <div className={`p-4 rounded-3xl flex justify-between items-center text-white shadow-2xl transition-all duration-500 ${role === 'admin' ? 'bg-indigo-900 border-indigo-700' : 'bg-slate-900 border-slate-700'}`}>
                            <div className="flex items-center gap-3">
