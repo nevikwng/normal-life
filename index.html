@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>任務獎勵與審核系統 - 同步強化版</title>
+    <title>任務獎勵系統 - 正式連線版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -12,17 +12,17 @@
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        window.FirebaseLib = { initializeApp, getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc };
+        window.FirebaseLib = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc };
     </script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
         body { font-family: 'Noto Sans TC', sans-serif; -webkit-tap-highlight-color: transparent; }
-        .sync-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        .sync-pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -31,149 +31,119 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
+        /* 🔑 Firebase 設定區塊 */
+        const MANUAL_CONFIG = {
+            apiKey: "AIzaSyAPvfBNFtj4FEtMlF-fnn9oet5iGMi0z-w",
+            authDomain: "normal-life-f46f8.firebaseapp.com",
+            projectId: "normal-life-f46f8",
+            storageBucket: "normal-life-f46f8.firebasestorage.app",
+            messagingSenderId: "1039652755711",
+            appId: "1:1039652755711:web:22ca73482a0aa3ba2e54ca"
+        };
+
         const Icons = {
-            Trophy: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>,
-            ShoppingBag: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>,
-            History: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>,
             Cloud: ({ active, status }) => (
                 <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-100 border border-slate-200">
-                    <div className={`w-2 h-2 rounded-full ${active ? 'bg-green-500 sync-pulse' : 'bg-red-500'}`}></div>
-                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">
+                    <div className={`w-2 h-2 rounded-full ${active ? 'bg-green-500 sync-pulse' : 'bg-red-400'}`}></div>
+                    <span className="text-[9px] font-bold text-slate-500 uppercase">
                         {status}
                     </span>
                 </div>
             ),
             Coins: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/></svg>,
-            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
-            Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
-            Shield: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
-            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
-            X: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
-            User: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
-            Lock: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Trophy: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>,
+            ShoppingBag: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>,
+            History: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>,
+            User: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         };
 
         const App = () => {
-            const [user, setUser] = useState(null);
             const [role, setRole] = useState('user');
             const [activeTab, setActiveTab] = useState('tasks');
-            const [syncStatus, setSyncStatus] = useState('Initializing...');
             const [isCloudSynced, setIsCloudSynced] = useState(false);
+            const [syncStatus, setSyncStatus] = useState('Starting...');
             
             const [coins, setCoins] = useState(0);
             const [missions, setMissions] = useState([]);
             const [rewards, setRewards] = useState([]);
             const [logs, setLogs] = useState([]);
 
-            const [showAddForm, setShowAddForm] = useState(false);
-            const [newItemName, setNewItemName] = useState('');
-            const [newItemValue, setNewItemValue] = useState('');
-
             const [showPasswordModal, setShowPasswordModal] = useState(false);
             const [passwordInput, setPasswordInput] = useState('');
-            
             const dbRef = useRef(null);
 
             useEffect(() => {
-                const initFirebase = async () => {
-                    const { initializeApp, getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, getFirestore, doc, onSnapshot, setDoc } = window.FirebaseLib;
+                const init = async () => {
+                    const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, doc, onSnapshot, setDoc } = window.FirebaseLib;
                     
                     try {
-                        const firebaseConfig = JSON.parse(__firebase_config);
-                        const app = initializeApp(firebaseConfig);
+                        const config = MANUAL_CONFIG;
+
+                        const app = initializeApp(config);
                         const auth = getAuth(app);
                         const db = getFirestore(app);
-                        const appId = typeof __app_id !== 'undefined' ? __app_id : 'mission-control-v5';
+                        const appId = config.projectId;
 
-                        setSyncStatus('Authenticating...');
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
+                        await signInAnonymously(auth);
 
-                        onAuthStateChanged(auth, (u) => {
-                            setUser(u);
-                            if (u) {
-                                // 修正路徑：確保這是在 /artifacts/{appId}/public/data/state/main
-                                const docPath = doc(db, 'artifacts', appId, 'public', 'data', 'state', 'main');
-                                dbRef.current = docPath;
+                        onAuthStateChanged(auth, (user) => {
+                            if (user) {
+                                // 重要：使用固定的路徑結構以便與規則匹配
+                                const path = doc(db, 'artifacts', appId, 'public', 'data', 'state', 'main');
+                                dbRef.current = path;
 
-                                setSyncStatus('Connecting DB...');
-                                onSnapshot(docPath, (snap) => {
+                                onSnapshot(path, (snap) => {
                                     if (snap.exists()) {
-                                        const data = snap.data();
-                                        setCoins(data.coins ?? 100);
-                                        setLogs(data.logs ?? []);
-                                        setMissions(data.missions ?? []);
-                                        setRewards(data.rewards ?? []);
+                                        const d = snap.data();
+                                        setCoins(d.coins || 0);
+                                        setMissions(d.missions || []);
+                                        setRewards(d.rewards || []);
+                                        setLogs(d.logs || []);
                                         setIsCloudSynced(true);
-                                        setSyncStatus('Live & Synced');
+                                        setSyncStatus('Live');
                                     } else {
-                                        setSyncStatus('Setting Up...');
-                                        setDoc(docPath, {
-                                            coins: 100,
-                                            logs: [],
-                                            missions: [{ id: 1, title: '慢跑 30 分鐘', value: 30, type: 'earn' }],
-                                            rewards: [{ id: 101, title: '手搖飲', value: 50, type: 'spend' }]
+                                        setSyncStatus('Creating Data...');
+                                        setDoc(path, { 
+                                            coins: 100, 
+                                            missions: [
+                                                { id: 1, title: '完成今日運動', value: 20, type: 'earn' },
+                                                { id: 2, title: '閱讀 10 頁書', value: 10, type: 'earn' }
+                                            ], 
+                                            rewards: [
+                                                { id: 101, title: '看一集影集', value: 50, type: 'spend' }
+                                            ], 
+                                            logs: [] 
+                                        }).catch(e => {
+                                            console.error("SetDoc Error:", e);
+                                            setSyncStatus('Permission Denied');
                                         });
                                     }
                                 }, (err) => {
                                     console.error("Firestore Error:", err);
+                                    setSyncStatus('Permission Denied');
                                     setIsCloudSynced(false);
-                                    setSyncStatus('DB Error');
                                 });
                             }
                         });
-                    } catch (e) {
-                        console.error("Init Error:", e);
+                    } catch (err) {
+                        console.error("Init Error:", err);
                         setSyncStatus('Init Failed');
                     }
                 };
-                initFirebase();
+                init();
             }, []);
 
-            const updateCloud = async (newData) => {
-                const { updateDoc } = window.FirebaseLib;
+            const updateCloud = async (data) => {
                 if (!dbRef.current) return;
+                const { updateDoc } = window.FirebaseLib;
                 try {
-                    setSyncStatus('Updating...');
-                    await updateDoc(dbRef.current, newData);
-                    setSyncStatus('Live & Synced');
+                    await updateDoc(dbRef.current, data);
                 } catch (e) {
-                    console.error("Update Error:", e);
-                    setSyncStatus('Push Failed');
-                }
-            };
-
-            const addNewItem = async (e) => {
-                e.preventDefault();
-                if (!newItemName || !newItemValue) return;
-                
-                const val = parseInt(newItemValue);
-                const newItem = { id: Date.now(), title: newItemName, value: val, type: activeTab === 'tasks' ? 'earn' : 'spend' };
-
-                if (activeTab === 'tasks') {
-                    await updateCloud({ missions: [...missions, newItem] });
-                } else {
-                    await updateCloud({ rewards: [...rewards, newItem] });
-                }
-
-                setNewItemName('');
-                setNewItemValue('');
-                setShowAddForm(false);
-            };
-
-            const deleteItem = async (id, type) => {
-                if (type === 'earn') {
-                    await updateCloud({ missions: missions.filter(m => m.id !== id) });
-                } else {
-                    await updateCloud({ rewards: rewards.filter(r => r.id !== id) });
+                    console.error("Save failed", e);
                 }
             };
 
             const submitRequest = async (item) => {
-                if (item.type === 'spend' && coins < item.value) return alert('點數不足');
                 const newLog = { ...item, logId: Date.now(), status: 'pending', timestamp: new Date().toLocaleString() };
                 const newMissions = item.type === 'earn' ? missions.filter(m => m.id !== item.id) : missions;
                 await updateCloud({ logs: [newLog, ...logs], missions: newMissions });
@@ -182,143 +152,105 @@
             const processReview = async (logId, action) => {
                 const target = logs.find(l => l.logId === logId);
                 if (!target) return;
-
                 let nextCoins = coins;
                 let nextMissions = [...missions];
-
                 if (action === 'approve') {
                     nextCoins = target.type === 'earn' ? coins + target.value : coins - target.value;
-                } else if (action === 'reject' && target.type === 'earn') {
-                    nextMissions = [ { id: target.id, title: target.title, value: target.value, type: 'earn' }, ...missions ];
+                } else {
+                    if (target.type === 'earn') nextMissions = [{id: target.id, title: target.title, value: target.value, type: 'earn'}, ...missions];
                 }
-
-                const nextLogs = logs.map(l => l.logId === logId ? { ...l, status: action === 'approve' ? 'approved' : 'rejected' } : l);
+                const nextLogs = logs.map(l => l.logId === logId ? {...l, status: action === 'approve' ? 'approved' : 'rejected'} : l);
                 await updateCloud({ coins: nextCoins, logs: nextLogs, missions: nextMissions });
             };
 
             return (
-                <div className="min-h-screen pb-40">
-                    <header className="bg-white border-b sticky top-0 z-30 px-6 py-4 flex justify-between items-center">
-                        <div className="flex flex-col">
-                            <h1 className="font-black text-slate-800 tracking-tight flex items-center gap-2 text-lg">
-                                {role === 'admin' ? <span className="text-indigo-600">ADMIN MODE</span> : <span>MISSION HUB</span>}
-                            </h1>
+                <div className="min-h-screen pb-32">
+                    <header className="bg-white/80 backdrop-blur-md sticky top-0 z-40 px-6 py-4 flex justify-between items-center border-b">
+                        <div>
+                            <h1 className="font-black text-slate-800 text-lg text-indigo-600 tracking-tighter">MISSION APP</h1>
                             <Icons.Cloud active={isCloudSynced} status={syncStatus} />
                         </div>
-                        <div className="flex items-center gap-3 bg-amber-50 px-4 py-2 rounded-2xl border border-amber-200">
+                        <div className="flex items-center gap-2 bg-amber-100 px-4 py-2 rounded-2xl">
                             <Icons.Coins />
                             <span className="font-black text-amber-700 text-xl">{coins}</span>
                         </div>
                     </header>
 
                     <main className="max-w-md mx-auto p-4 space-y-4">
-                        <div className="flex bg-slate-200 p-1 rounded-2xl">
-                            {role === 'user' ? (
-                                <>
-                                    <button onClick={() => { setActiveTab('tasks'); setShowAddForm(false); }} className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${activeTab==='tasks'?'bg-white shadow-sm':'text-slate-500'}`}><Icons.Trophy /> 任務</button>
-                                    <button onClick={() => { setActiveTab('shop'); setShowAddForm(false); }} className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${activeTab==='shop'?'bg-white shadow-sm':'text-slate-500'}`}><Icons.ShoppingBag /> 兌換</button>
-                                    <button onClick={() => { setActiveTab('status'); setShowAddForm(false); }} className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${activeTab==='status'?'bg-white shadow-sm':'text-slate-500'}`}><Icons.History /> 歷史</button>
-                                </>
-                            ) : (
-                                <div className="flex-1 py-2.5 rounded-xl bg-white text-center font-bold text-indigo-600 shadow-sm flex items-center justify-center gap-2">
-                                    <Icons.Shield /> 審核與管理中心
-                                </div>
-                            )}
-                        </div>
-
-                        {role === 'user' && (activeTab === 'tasks' || activeTab === 'shop') && (
-                            <div className="space-y-3">
-                                {!showAddForm ? (
-                                    <button onClick={() => setShowAddForm(true)} className="w-full py-4 border-2 border-dashed border-slate-300 rounded-2xl text-slate-500 flex items-center justify-center gap-2 hover:bg-slate-100 font-bold text-sm">
-                                        <Icons.Plus /> 新增自定義{activeTab === 'tasks' ? '任務' : '獎勵'}
-                                    </button>
-                                ) : (
-                                    <form onSubmit={addNewItem} className="bg-white p-4 rounded-2xl shadow-lg border border-indigo-100 space-y-3">
-                                        <div className="flex gap-2">
-                                            <input type="text" placeholder="名稱" className="flex-1 bg-slate-100 border-none rounded-xl px-4 py-2 text-sm" value={newItemName} onChange={(e)=>setNewItemName(e.target.value)} required />
-                                            <input type="number" placeholder="點數" className="w-24 bg-slate-100 border-none rounded-xl px-4 py-2 text-sm" value={newItemValue} onChange={(e)=>setNewItemValue(e.target.value)} required />
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <button type="submit" className="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl text-sm font-bold">確認新增</button>
-                                            <button type="button" onClick={()=>setShowAddForm(false)} className="px-4 py-2.5 text-slate-400 text-sm font-bold">取消</button>
-                                        </div>
-                                    </form>
-                                )}
-
-                                {(activeTab === 'tasks' ? missions : rewards).map(item => (
-                                    <div key={item.id} className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm group">
-                                        <div className="flex items-center gap-3">
-                                            <button onClick={() => deleteItem(item.id, item.type)} className="p-2 text-slate-300 hover:text-red-500 transition-colors md:opacity-0 group-hover:opacity-100"><Icons.Trash /></button>
-                                            <div>
-                                                <p className="font-bold text-slate-700">{item.title}</p>
-                                                <p className={`text-xs font-bold ${activeTab === 'tasks' ? 'text-blue-500' : 'text-purple-500'}`}>{activeTab === 'tasks'?'+':'-'}{item.value} Coins</p>
-                                            </div>
-                                        </div>
-                                        <button onClick={() => submitRequest(item)} disabled={activeTab === 'shop' && coins < item.value} className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'tasks' ? 'bg-slate-900 text-white active:scale-95' : (coins >= item.value ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-400')}`}>
-                                            {activeTab === 'tasks' ? '回報' : '兌換'}
-                                        </button>
-                                    </div>
-                                ))}
+                        {syncStatus === 'Permission Denied' && (
+                            <div className="bg-red-50 border border-red-200 p-4 rounded-2xl text-red-600 text-sm">
+                                <p className="font-bold mb-1">❌ 權限設定不全</p>
+                                <p className="mb-2 text-xs">請到 Firebase Console 的 Rules 中，將 Rules 改為：</p>
+                                <pre className="bg-white/50 p-2 rounded text-[10px] overflow-x-auto font-mono">
+{`service cloud.firestore {
+  match /databases/{database}/documents {
+    match /artifacts/{appId}/public/data/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}`}
+                                </pre>
                             </div>
                         )}
 
-                        {role === 'user' && activeTab === 'status' && (
-                            <div className="space-y-2">
-                                {logs.map(log => (
-                                    <div key={log.logId} className="bg-white p-3 rounded-xl border flex justify-between items-center opacity-80">
-                                        <div className="flex gap-3 items-center text-xs">
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${log.status==='pending'?'bg-amber-100':log.status==='approved'?'bg-green-100':'bg-red-100'}`}>
-                                                {log.status==='pending'?'...':log.status==='approved'?'✓':'✕'}
-                                            </div>
-                                            <div><p className="font-bold">{log.title}</p><p className="text-slate-400">{log.timestamp}</p></div>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className={`font-black ${log.type==='earn'?'text-blue-500':'text-purple-500'}`}>{log.type==='earn'?'+':'-'}{log.value}</p>
-                                        </div>
+                        <div className="flex bg-slate-200 p-1 rounded-2xl">
+                            <button onClick={()=>setActiveTab('tasks')} className={`flex-1 py-2 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${activeTab==='tasks'?'bg-white shadow-sm':'text-slate-500'}`}><Icons.Trophy /> 任務</button>
+                            <button onClick={()=>setActiveTab('shop')} className={`flex-1 py-2 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${activeTab==='shop'?'bg-white shadow-sm':'text-slate-500'}`}><Icons.ShoppingBag /> 商店</button>
+                            <button onClick={()=>setActiveTab('logs')} className={`flex-1 py-2 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${activeTab==='logs'?'bg-white shadow-sm':'text-slate-500'}`}><Icons.History /> 紀錄</button>
+                        </div>
+
+                        {role === 'user' && activeTab === 'tasks' && (
+                            <div className="space-y-3">
+                                {missions.map(m => (
+                                    <div key={m.id} className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm">
+                                        <div><p className="font-bold">{m.title}</p><p className="text-blue-500 text-xs font-black">+{m.value} pt</p></div>
+                                        <button onClick={()=>submitRequest(m)} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold active:scale-95 transition-transform">回報完成</button>
                                     </div>
                                 ))}
+                                {missions.length === 0 && isCloudSynced && <p className="text-center py-10 text-slate-400 text-sm italic">目前暫無任務項目</p>}
                             </div>
                         )}
 
                         {role === 'admin' && (
                             <div className="space-y-4">
+                                <p className="text-xs font-bold text-indigo-500 px-2 uppercase tracking-widest flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"></span>
+                                    待審核申請
+                                </p>
                                 {logs.filter(l=>l.status==='pending').map(log => (
-                                    <div key={log.logId} className="bg-white p-5 rounded-2xl border-l-4 border-amber-400 shadow-md">
-                                        <div className="flex justify-between mb-4">
+                                    <div key={log.logId} className="bg-white p-5 rounded-3xl border-2 border-slate-100 shadow-xl shadow-slate-200/50">
+                                        <div className="flex justify-between items-start mb-4">
                                             <div><h3 className="font-bold text-lg">{log.title}</h3><p className="text-xs text-slate-400">{log.timestamp}</p></div>
-                                            <span className="text-2xl font-black">{log.type==='earn'?'+':'-'}{log.value}</span>
+                                            <span className={`text-xl font-black ${log.type==='earn'?'text-blue-600':'text-purple-600'}`}>{log.type==='earn'?'+':'-'}{log.value}</span>
                                         </div>
-                                        <div className="flex gap-3">
-                                            <button onClick={() => processReview(log.logId, 'approve')} className="flex-1 bg-green-500 text-white py-3 rounded-xl font-bold">准許</button>
-                                            <button onClick={() => processReview(log.logId, 'reject')} className="flex-1 bg-red-500 text-white py-3 rounded-xl font-bold">駁回</button>
+                                        <div className="flex gap-2">
+                                            <button onClick={()=>processReview(log.logId, 'approve')} className="flex-1 bg-green-500 text-white py-3 rounded-2xl font-bold active:scale-95 transition-transform">批准</button>
+                                            <button onClick={()=>processReview(log.logId, 'reject')} className="flex-1 bg-slate-100 text-slate-500 py-3 rounded-2xl font-bold active:scale-95 transition-transform">駁回</button>
                                         </div>
                                     </div>
                                 ))}
+                                {logs.filter(l=>l.status==='pending').length === 0 && isCloudSynced && <p className="text-center py-12 text-slate-400 text-sm">✅ 所有申請已處理完畢</p>}
                             </div>
                         )}
                     </main>
 
-                    {/* 角色切換 */}
-                    <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-md px-4">
-                        <div className={`p-4 rounded-[2rem] flex justify-between items-center shadow-2xl border backdrop-blur-lg bg-slate-900/90 text-white`}>
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center"><Icons.User /></div>
-                                <div className="text-xs">
-                                    <p className="font-black">{role==='admin'?'管理員':'執行者'}</p>
-                                </div>
-                            </div>
-                            <button onClick={() => role === 'user' ? setShowPasswordModal(true) : setRole('user')} className="bg-white text-slate-900 px-6 py-2 rounded-2xl font-bold text-xs uppercase">切換</button>
+                    <div className="fixed bottom-6 left-4 right-4 max-w-md mx-auto">
+                        <div className={`p-4 rounded-3xl flex justify-between items-center text-white shadow-2xl transition-all duration-500 ${role === 'admin' ? 'bg-indigo-900 border-indigo-700' : 'bg-slate-900 border-slate-700'}`}>
+                           <div className="flex items-center gap-3">
+                               <div className="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center shadow-inner"><Icons.User/></div>
+                           </div>
+                           <button onClick={()=>role==='user'?setShowPasswordModal(true):setRole('user')} className="bg-white text-slate-900 px-6 py-2.5 rounded-2xl font-bold text-xs active:scale-90 shadow-lg">切換身分</button>
                         </div>
                     </div>
 
                     {showPasswordModal && (
-                        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-                            <form onSubmit={(e)=>{e.preventDefault(); if(passwordInput==="8888"){setRole('admin');setShowPasswordModal(false);setPasswordInput('');}else{alert('WRONG');}}} className="bg-white w-full max-w-xs rounded-3xl p-6">
-                                <h2 className="text-center font-black mb-4">輸入 PIN 碼</h2>
-                                <input type="password" autoFocus className="w-full bg-slate-100 rounded-xl py-4 text-center text-2xl font-black tracking-[0.5em] mb-4" value={passwordInput} onChange={(e)=>setPasswordInput(e.target.value)} maxLength={4} />
-                                <button type="submit" className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold">確認</button>
-                                <button type="button" onClick={()=>setShowPasswordModal(false)} className="w-full text-slate-400 py-2 text-sm mt-2">取消</button>
-                            </form>
+                        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-6 backdrop-blur-sm">
+                            <div className="bg-white rounded-[2rem] p-8 w-full max-w-xs shadow-2xl">
+                                <p className="text-center font-bold mb-2 text-slate-800">身分驗證</p>
+                                <input type="password" autoFocus className="w-full bg-slate-100 py-5 text-center text-3xl font-black rounded-2xl mb-6 tracking-[0.5em] outline-none" value={passwordInput} onChange={(e)=>setPasswordInput(e.target.value)} maxLength={4} />
+                                <button onClick={()=>{if(passwordInput==='8888'){setRole('admin');setShowPasswordModal(false);setPasswordInput('');}else{alert('密碼錯誤');}}} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold">確認</button>
+                                <button onClick={()=>setShowPasswordModal(false)} className="w-full text-slate-400 py-3 text-sm mt-2">取消</button>
+                            </div>
                         </div>
                     )}
                 </div>
