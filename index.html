@@ -3,212 +3,294 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>任務獎勵系統</title>
-    <!-- 使用 CDN 確保在 GitHub Pages 環境能直接運行 -->
+    <title>任務獎勵與審核系統 - 同步強化版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Firebase SDK Compat 版本 -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        window.FirebaseLib = { initializeApp, getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc };
+    </script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
         body { font-family: 'Noto Sans TC', sans-serif; -webkit-tap-highlight-color: transparent; }
-        .cloud-active { animation: pulse 2s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .sync-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
     </style>
 </head>
-<body class="bg-slate-50">
+<body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
 
     <script type="text/babel">
-        // Firebase 設定
-        const firebaseConfig = {
-            apiKey: "AIzaSyAPvfBNFtj4FEtMlF-fnn9oet5iGMi0z-w",
-            authDomain: "normal-life-f46f8.firebaseapp.com",
-            projectId: "normal-life-f46f8",
-            storageBucket: "normal-life-f46f8.firebasestorage.app",
-            messagingSenderId: "1039652755711",
-            appId: "1:1039652755711:web:22ca73482a0aa3ba2e54ca",
-            measurementId: "G-407NP2B0BM"
+        const { useState, useEffect, useRef } = React;
+
+        const Icons = {
+            Trophy: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>,
+            ShoppingBag: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>,
+            History: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>,
+            Cloud: ({ active, status }) => (
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-100 border border-slate-200">
+                    <div className={`w-2 h-2 rounded-full ${active ? 'bg-green-500 sync-pulse' : 'bg-red-500'}`}></div>
+                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">
+                        {status}
+                    </span>
+                </div>
+            ),
+            Coins: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/></svg>,
+            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+            Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
+            Shield: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+            X: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+            User: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+            Lock: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         };
 
-        // 初始化 Firebase
-        let db;
-        try {
-            if (!firebase.apps.length) {
-                firebase.initializeApp(firebaseConfig);
-            }
-            db = firebase.firestore();
-            // 修正：針對 GitHub Pages 的跨域存取優化
-            db.settings({ experimentalForceLongPolling: true });
-        } catch (e) {
-            console.error("Firebase 初始化錯誤:", e);
-        }
-
-        const { useState, useEffect } = React;
-
-        // 簡易圖標
-        const Icon = ({ name, className = "w-5 h-5" }) => (
-            <span className={className} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                {name === 'coins' && '💰'}
-                {name === 'user' && '👤'}
-                {name === 'admin' && '🔑'}
-                {name === 'cloud' && '☁️'}
-                {name === 'check' && '✅'}
-                {name === 'x' && '❌'}
-                {name === 'pending' && '⏳'}
-            </span>
-        );
-
         const App = () => {
+            const [user, setUser] = useState(null);
+            const [role, setRole] = useState('user');
+            const [activeTab, setActiveTab] = useState('tasks');
+            const [syncStatus, setSyncStatus] = useState('Initializing...');
+            const [isCloudSynced, setIsCloudSynced] = useState(false);
+            
             const [coins, setCoins] = useState(0);
-            const [role, setRole] = useState('user'); // user 或 admin
-            const [isOnline, setIsOnline] = useState(false);
-            const [logs, setLogs] = useState([]);
             const [missions, setMissions] = useState([]);
             const [rewards, setRewards] = useState([]);
-            const [activeTab, setActiveTab] = useState('tasks');
+            const [logs, setLogs] = useState([]);
 
-            // 實時監聽資料庫
+            const [showAddForm, setShowAddForm] = useState(false);
+            const [newItemName, setNewItemName] = useState('');
+            const [newItemValue, setNewItemValue] = useState('');
+
+            const [showPasswordModal, setShowPasswordModal] = useState(false);
+            const [passwordInput, setPasswordInput] = useState('');
+            
+            const dbRef = useRef(null);
+
             useEffect(() => {
-                if (!db) return;
-                const unsubscribe = db.collection('app_data').doc('shared').onSnapshot(doc => {
-                    if (doc.exists) {
-                        const data = doc.data();
-                        setCoins(data.coins || 0);
-                        setLogs(data.logs || []);
-                        setMissions(data.missions || []);
-                        setRewards(data.rewards || []);
-                        setIsOnline(true);
-                    } else {
-                        // 初始化資料
-                        db.collection('app_data').doc('shared').set({
-                            coins: 100,
-                            missions: [{ id: 1, title: '慢跑', value: 30, type: 'earn' }],
-                            rewards: [{ id: 101, title: '手搖飲', value: 50, type: 'spend' }],
-                            logs: []
+                const initFirebase = async () => {
+                    const { initializeApp, getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, getFirestore, doc, onSnapshot, setDoc } = window.FirebaseLib;
+                    
+                    try {
+                        const firebaseConfig = JSON.parse(__firebase_config);
+                        const app = initializeApp(firebaseConfig);
+                        const auth = getAuth(app);
+                        const db = getFirestore(app);
+                        const appId = typeof __app_id !== 'undefined' ? __app_id : 'mission-control-v5';
+
+                        setSyncStatus('Authenticating...');
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+
+                        onAuthStateChanged(auth, (u) => {
+                            setUser(u);
+                            if (u) {
+                                // 修正路徑：確保這是在 /artifacts/{appId}/public/data/state/main
+                                const docPath = doc(db, 'artifacts', appId, 'public', 'data', 'state', 'main');
+                                dbRef.current = docPath;
+
+                                setSyncStatus('Connecting DB...');
+                                onSnapshot(docPath, (snap) => {
+                                    if (snap.exists()) {
+                                        const data = snap.data();
+                                        setCoins(data.coins ?? 100);
+                                        setLogs(data.logs ?? []);
+                                        setMissions(data.missions ?? []);
+                                        setRewards(data.rewards ?? []);
+                                        setIsCloudSynced(true);
+                                        setSyncStatus('Live & Synced');
+                                    } else {
+                                        setSyncStatus('Setting Up...');
+                                        setDoc(docPath, {
+                                            coins: 100,
+                                            logs: [],
+                                            missions: [{ id: 1, title: '慢跑 30 分鐘', value: 30, type: 'earn' }],
+                                            rewards: [{ id: 101, title: '手搖飲', value: 50, type: 'spend' }]
+                                        });
+                                    }
+                                }, (err) => {
+                                    console.error("Firestore Error:", err);
+                                    setIsCloudSynced(false);
+                                    setSyncStatus('DB Error');
+                                });
+                            }
                         });
+                    } catch (e) {
+                        console.error("Init Error:", e);
+                        setSyncStatus('Init Failed');
                     }
-                }, err => {
-                    console.error("監聽失敗:", err);
-                    setIsOnline(false);
-                });
-                return () => unsubscribe();
+                };
+                initFirebase();
             }, []);
 
-            // 提交申請
-            const handleApply = (item) => {
-                if (item.type === 'spend' && coins < item.value) {
-                    alert('金幣不足！');
-                    return;
+            const updateCloud = async (newData) => {
+                const { updateDoc } = window.FirebaseLib;
+                if (!dbRef.current) return;
+                try {
+                    setSyncStatus('Updating...');
+                    await updateDoc(dbRef.current, newData);
+                    setSyncStatus('Live & Synced');
+                } catch (e) {
+                    console.error("Update Error:", e);
+                    setSyncStatus('Push Failed');
                 }
-                const newLog = {
-                    ...item,
-                    logId: Date.now(),
-                    status: 'pending',
-                    time: new Date().toLocaleTimeString()
-                };
-                db.collection('app_data').doc('shared').update({
-                    logs: [newLog, ...logs]
-                });
-                alert('已送出申請，請等候審核');
             };
 
-            // 管理員審核
-            const handleReview = (logId, isApprove) => {
+            const addNewItem = async (e) => {
+                e.preventDefault();
+                if (!newItemName || !newItemValue) return;
+                
+                const val = parseInt(newItemValue);
+                const newItem = { id: Date.now(), title: newItemName, value: val, type: activeTab === 'tasks' ? 'earn' : 'spend' };
+
+                if (activeTab === 'tasks') {
+                    await updateCloud({ missions: [...missions, newItem] });
+                } else {
+                    await updateCloud({ rewards: [...rewards, newItem] });
+                }
+
+                setNewItemName('');
+                setNewItemValue('');
+                setShowAddForm(false);
+            };
+
+            const deleteItem = async (id, type) => {
+                if (type === 'earn') {
+                    await updateCloud({ missions: missions.filter(m => m.id !== id) });
+                } else {
+                    await updateCloud({ rewards: rewards.filter(r => r.id !== id) });
+                }
+            };
+
+            const submitRequest = async (item) => {
+                if (item.type === 'spend' && coins < item.value) return alert('點數不足');
+                const newLog = { ...item, logId: Date.now(), status: 'pending', timestamp: new Date().toLocaleString() };
+                const newMissions = item.type === 'earn' ? missions.filter(m => m.id !== item.id) : missions;
+                await updateCloud({ logs: [newLog, ...logs], missions: newMissions });
+            };
+
+            const processReview = async (logId, action) => {
                 const target = logs.find(l => l.logId === logId);
                 if (!target) return;
 
-                let newCoins = coins;
-                if (isApprove) {
-                    newCoins = target.type === 'earn' ? coins + target.value : coins - target.value;
+                let nextCoins = coins;
+                let nextMissions = [...missions];
+
+                if (action === 'approve') {
+                    nextCoins = target.type === 'earn' ? coins + target.value : coins - target.value;
+                } else if (action === 'reject' && target.type === 'earn') {
+                    nextMissions = [ { id: target.id, title: target.title, value: target.value, type: 'earn' }, ...missions ];
                 }
 
-                const newLogs = logs.map(l => 
-                    l.logId === logId ? { ...l, status: isApprove ? 'approved' : 'rejected' } : l
-                );
-
-                db.collection('app_data').doc('shared').update({
-                    coins: newCoins,
-                    logs: newLogs
-                });
+                const nextLogs = logs.map(l => l.logId === logId ? { ...l, status: action === 'approve' ? 'approved' : 'rejected' } : l);
+                await updateCloud({ coins: nextCoins, logs: nextLogs, missions: nextMissions });
             };
 
             return (
-                <div className="max-w-md mx-auto min-h-screen flex flex-col">
-                    <header className="bg-white p-4 shadow-sm flex justify-between items-center sticky top-0 z-10">
-                        <div className="flex items-center gap-2">
-                            <Icon name={role === 'admin' ? 'admin' : 'user'} />
-                            <span className="font-bold">{role === 'admin' ? '管理者' : '使用者'}</span>
-                            <span className={`text-[10px] ${isOnline ? 'text-green-500 cloud-active' : 'text-slate-300'}`}>
-                                <Icon name="cloud" className="w-3 h-3" /> {isOnline ? '同步中' : '斷線'}
-                            </span>
+                <div className="min-h-screen pb-40">
+                    <header className="bg-white border-b sticky top-0 z-30 px-6 py-4 flex justify-between items-center">
+                        <div className="flex flex-col">
+                            <h1 className="font-black text-slate-800 tracking-tight flex items-center gap-2 text-lg">
+                                {role === 'admin' ? <span className="text-indigo-600">ADMIN MODE</span> : <span>MISSION HUB</span>}
+                            </h1>
+                            <Icons.Cloud active={isCloudSynced} status={syncStatus} />
                         </div>
-                        <div className="bg-amber-100 px-3 py-1 rounded-full text-amber-700 font-bold flex items-center gap-1">
-                            <Icon name="coins" /> {coins}
+                        <div className="flex items-center gap-3 bg-amber-50 px-4 py-2 rounded-2xl border border-amber-200">
+                            <Icons.Coins />
+                            <span className="font-black text-amber-700 text-xl">{coins}</span>
                         </div>
                     </header>
 
-                    <main className="p-4 flex-1">
-                        {role === 'user' ? (
-                            <div className="space-y-4">
-                                <div className="flex gap-2">
-                                    <button onClick={() => setActiveTab('tasks')} className={`flex-1 py-2 rounded-xl font-bold ${activeTab === 'tasks' ? 'bg-blue-600 text-white' : 'bg-slate-200'}`}>任務</button>
-                                    <button onClick={() => setActiveTab('shop')} className={`flex-1 py-2 rounded-xl font-bold ${activeTab === 'shop' ? 'bg-purple-600 text-white' : 'bg-slate-200'}`}>兌換</button>
-                                    <button onClick={() => setActiveTab('history')} className={`flex-1 py-2 rounded-xl font-bold ${activeTab === 'history' ? 'bg-slate-800 text-white' : 'bg-slate-200'}`}>紀錄</button>
+                    <main className="max-w-md mx-auto p-4 space-y-4">
+                        <div className="flex bg-slate-200 p-1 rounded-2xl">
+                            {role === 'user' ? (
+                                <>
+                                    <button onClick={() => { setActiveTab('tasks'); setShowAddForm(false); }} className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${activeTab==='tasks'?'bg-white shadow-sm':'text-slate-500'}`}><Icons.Trophy /> 任務</button>
+                                    <button onClick={() => { setActiveTab('shop'); setShowAddForm(false); }} className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${activeTab==='shop'?'bg-white shadow-sm':'text-slate-500'}`}><Icons.ShoppingBag /> 兌換</button>
+                                    <button onClick={() => { setActiveTab('status'); setShowAddForm(false); }} className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${activeTab==='status'?'bg-white shadow-sm':'text-slate-500'}`}><Icons.History /> 歷史</button>
+                                </>
+                            ) : (
+                                <div className="flex-1 py-2.5 rounded-xl bg-white text-center font-bold text-indigo-600 shadow-sm flex items-center justify-center gap-2">
+                                    <Icons.Shield /> 審核與管理中心
                                 </div>
+                            )}
+                        </div>
 
-                                {activeTab === 'history' ? (
-                                    <div className="space-y-2">
-                                        {logs.map(log => (
-                                            <div key={log.logId} className="bg-white p-3 rounded-xl shadow-sm flex justify-between items-center">
-                                                <div>
-                                                    <div className="font-bold text-sm">{log.title}</div>
-                                                    <div className="text-[10px] text-slate-400">{log.time}</div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`text-xs font-bold ${log.status === 'approved' ? 'text-green-500' : log.status === 'pending' ? 'text-amber-500' : 'text-red-500'}`}>
-                                                        {log.status === 'approved' ? '已通過' : log.status === 'pending' ? '審核中' : '被拒絕'}
-                                                    </span>
-                                                    <span className="font-black">{log.type === 'earn' ? '+' : '-'}{log.value}</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
+                        {role === 'user' && (activeTab === 'tasks' || activeTab === 'shop') && (
+                            <div className="space-y-3">
+                                {!showAddForm ? (
+                                    <button onClick={() => setShowAddForm(true)} className="w-full py-4 border-2 border-dashed border-slate-300 rounded-2xl text-slate-500 flex items-center justify-center gap-2 hover:bg-slate-100 font-bold text-sm">
+                                        <Icons.Plus /> 新增自定義{activeTab === 'tasks' ? '任務' : '獎勵'}
+                                    </button>
                                 ) : (
-                                    <div className="space-y-3">
-                                        {(activeTab === 'tasks' ? missions : rewards).map(item => (
-                                            <div key={item.id} className="bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm">
-                                                <div>
-                                                    <div className="font-bold">{item.title}</div>
-                                                    <div className="text-sm text-blue-500 font-bold">{item.value} Coins</div>
-                                                </div>
-                                                <button onClick={() => handleApply(item)} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold">申請</button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                <h2 className="font-bold text-slate-500 text-sm px-1">待審核清單</h2>
-                                {logs.filter(l => l.status === 'pending').length === 0 && <p className="text-center text-slate-400 py-10">目前沒有申請</p>}
-                                {logs.filter(l => l.status === 'pending').map(log => (
-                                    <div key={log.logId} className="bg-white p-4 rounded-2xl shadow-md border-l-4 border-amber-400">
-                                        <div className="flex justify-between items-start mb-3">
-                                            <div>
-                                                <div className="font-bold">{log.title}</div>
-                                                <div className="text-xs text-slate-400">{log.time}</div>
-                                            </div>
-                                            <div className="text-xl font-black">{log.type === 'earn' ? '+' : '-'}{log.value}</div>
+                                    <form onSubmit={addNewItem} className="bg-white p-4 rounded-2xl shadow-lg border border-indigo-100 space-y-3">
+                                        <div className="flex gap-2">
+                                            <input type="text" placeholder="名稱" className="flex-1 bg-slate-100 border-none rounded-xl px-4 py-2 text-sm" value={newItemName} onChange={(e)=>setNewItemName(e.target.value)} required />
+                                            <input type="number" placeholder="點數" className="w-24 bg-slate-100 border-none rounded-xl px-4 py-2 text-sm" value={newItemValue} onChange={(e)=>setNewItemValue(e.target.value)} required />
                                         </div>
                                         <div className="flex gap-2">
-                                            <button onClick={() => handleReview(log.logId, true)} className="flex-1 bg-green-500 text-white py-2 rounded-xl font-bold">准許</button>
-                                            <button onClick={() => handleReview(log.logId, false)} className="flex-1 bg-red-500 text-white py-2 rounded-xl font-bold">駁回</button>
+                                            <button type="submit" className="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl text-sm font-bold">確認新增</button>
+                                            <button type="button" onClick={()=>setShowAddForm(false)} className="px-4 py-2.5 text-slate-400 text-sm font-bold">取消</button>
+                                        </div>
+                                    </form>
+                                )}
+
+                                {(activeTab === 'tasks' ? missions : rewards).map(item => (
+                                    <div key={item.id} className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm group">
+                                        <div className="flex items-center gap-3">
+                                            <button onClick={() => deleteItem(item.id, item.type)} className="p-2 text-slate-300 hover:text-red-500 transition-colors md:opacity-0 group-hover:opacity-100"><Icons.Trash /></button>
+                                            <div>
+                                                <p className="font-bold text-slate-700">{item.title}</p>
+                                                <p className={`text-xs font-bold ${activeTab === 'tasks' ? 'text-blue-500' : 'text-purple-500'}`}>{activeTab === 'tasks'?'+':'-'}{item.value} Coins</p>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => submitRequest(item)} disabled={activeTab === 'shop' && coins < item.value} className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'tasks' ? 'bg-slate-900 text-white active:scale-95' : (coins >= item.value ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-400')}`}>
+                                            {activeTab === 'tasks' ? '回報' : '兌換'}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {role === 'user' && activeTab === 'status' && (
+                            <div className="space-y-2">
+                                {logs.map(log => (
+                                    <div key={log.logId} className="bg-white p-3 rounded-xl border flex justify-between items-center opacity-80">
+                                        <div className="flex gap-3 items-center text-xs">
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${log.status==='pending'?'bg-amber-100':log.status==='approved'?'bg-green-100':'bg-red-100'}`}>
+                                                {log.status==='pending'?'...':log.status==='approved'?'✓':'✕'}
+                                            </div>
+                                            <div><p className="font-bold">{log.title}</p><p className="text-slate-400">{log.timestamp}</p></div>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className={`font-black ${log.type==='earn'?'text-blue-500':'text-purple-500'}`}>{log.type==='earn'?'+':'-'}{log.value}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {role === 'admin' && (
+                            <div className="space-y-4">
+                                {logs.filter(l=>l.status==='pending').map(log => (
+                                    <div key={log.logId} className="bg-white p-5 rounded-2xl border-l-4 border-amber-400 shadow-md">
+                                        <div className="flex justify-between mb-4">
+                                            <div><h3 className="font-bold text-lg">{log.title}</h3><p className="text-xs text-slate-400">{log.timestamp}</p></div>
+                                            <span className="text-2xl font-black">{log.type==='earn'?'+':'-'}{log.value}</span>
+                                        </div>
+                                        <div className="flex gap-3">
+                                            <button onClick={() => processReview(log.logId, 'approve')} className="flex-1 bg-green-500 text-white py-3 rounded-xl font-bold">准許</button>
+                                            <button onClick={() => processReview(log.logId, 'reject')} className="flex-1 bg-red-500 text-white py-3 rounded-xl font-bold">駁回</button>
                                         </div>
                                     </div>
                                 ))}
@@ -216,22 +298,29 @@
                         )}
                     </main>
 
-                    <footer className="p-4 bg-white border-t flex gap-4 sticky bottom-0">
-                        <button 
-                            onClick={() => {
-                                if (role === 'user') {
-                                    const pw = prompt('請輸入管理密碼:');
-                                    if (pw === '8888') setRole('admin');
-                                    else if (pw !== null) alert('密碼錯誤');
-                                } else {
-                                    setRole('user');
-                                }
-                            }}
-                            className="w-full py-3 rounded-2xl bg-slate-100 text-slate-600 font-bold text-sm"
-                        >
-                            {role === 'user' ? '切換管理者模式' : '切換回執行者模式'}
-                        </button>
-                    </footer>
+                    {/* 角色切換 */}
+                    <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-md px-4">
+                        <div className={`p-4 rounded-[2rem] flex justify-between items-center shadow-2xl border backdrop-blur-lg bg-slate-900/90 text-white`}>
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center"><Icons.User /></div>
+                                <div className="text-xs">
+                                    <p className="font-black">{role==='admin'?'管理員':'執行者'}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => role === 'user' ? setShowPasswordModal(true) : setRole('user')} className="bg-white text-slate-900 px-6 py-2 rounded-2xl font-bold text-xs uppercase">切換</button>
+                        </div>
+                    </div>
+
+                    {showPasswordModal && (
+                        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+                            <form onSubmit={(e)=>{e.preventDefault(); if(passwordInput==="8888"){setRole('admin');setShowPasswordModal(false);setPasswordInput('');}else{alert('WRONG');}}} className="bg-white w-full max-w-xs rounded-3xl p-6">
+                                <h2 className="text-center font-black mb-4">輸入 PIN 碼</h2>
+                                <input type="password" autoFocus className="w-full bg-slate-100 rounded-xl py-4 text-center text-2xl font-black tracking-[0.5em] mb-4" value={passwordInput} onChange={(e)=>setPasswordInput(e.target.value)} maxLength={4} />
+                                <button type="submit" className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold">確認</button>
+                                <button type="button" onClick={()=>setShowPasswordModal(false)} className="w-full text-slate-400 py-2 text-sm mt-2">取消</button>
+                            </form>
+                        </div>
+                    )}
                 </div>
             );
         };
